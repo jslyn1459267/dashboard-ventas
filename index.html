@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Ventas 2026</title>
+<style>
+  :root {
+    --surface-0: #f3f2ef;
+    --surface-1: #fcfcfb;
+    --border: #e2e0da;
+    --grid: #ebe9e4;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7974;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --series-5: #e87ba4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-0: #121211;
+      --surface-1: #1a1a19;
+      --border: #2e2e2c;
+      --grid: #292927;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --series-5: #d55181;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--surface-0);
+    color: var(--text-primary);
+  }
+  header { padding: 24px 32px 8px; }
+  header h1 { margin: 0; font-size: 24px; }
+  header p { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
+  main { padding: 16px 32px 32px; max-width: 1280px; margin: 0 auto; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px; }
+  .kpi, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+  .kpi { padding: 16px 20px; }
+  .kpi .label { font-size: 13px; color: var(--text-secondary); }
+  .kpi .value { font-size: 28px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; }
+  .card { padding: 16px 20px 12px; }
+  .card h2 { margin: 0; font-size: 16px; }
+  .card .desc { margin: 2px 0 8px; font-size: 13px; color: var(--text-secondary); }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .legend i.sq { width: 10px; height: 10px; border-radius: 2px; }
+  svg { width: 100%; height: auto; display: block; overflow: visible; }
+  svg text { fill: var(--text-secondary); font-size: 11px; font-family: inherit; }
+  .axis line, .gridline { stroke: var(--grid); }
+  #tooltip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    min-width: 120px; z-index: 10;
+  }
+  #tooltip b { display: block; margin-bottom: 4px; }
+  #tooltip .row { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+  footer { text-align: center; color: var(--text-muted); font-size: 12px; padding-bottom: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dashboard de Ventas 2026</h1>
+  <p>Resumen anual de ventas · montos en miles de MXN</p>
+</header>
+
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Ventas mensuales</h2>
+      <p class="desc">Evolución de las ventas a lo largo del año</p>
+      <div id="chart-ventas"></div>
+    </div>
+    <div class="card">
+      <h2>Ventas por región</h2>
+      <p class="desc">Total anual por región, de mayor a menor</p>
+      <div id="chart-regiones"></div>
+    </div>
+    <div class="card">
+      <h2>Participación por categoría</h2>
+      <p class="desc">Porcentaje de las ventas anuales por categoría</p>
+      <div id="chart-categorias"></div>
+    </div>
+    <div class="card">
+      <h2>Unidades vendidas por mes</h2>
+      <p class="desc">Cantidad de unidades vendidas cada mes</p>
+      <div id="chart-unidades"></div>
+    </div>
+  </section>
+</main>
+
+<footer>Fuente: datos.js</footer>
+<div id="tooltip"></div>
+
+<script src="datos.js"></script>
+<script>
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const fmtMiles = v => "$" + v.toLocaleString("es-MX") + "k";
+  const fmtNum = v => v.toLocaleString("es-MX");
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const tip = document.getElementById("tooltip");
+
+  function el(tag, attrs = {}, parent) {
+    const e = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function showTip(evt, title, rows) {
+    tip.innerHTML = "<b>" + title + "</b>" +
+      rows.map(r => `<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("");
+    tip.style.opacity = 1;
+    const x = Math.min(evt.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + "px";
+    tip.style.top = (evt.clientY + 14) + "px";
+  }
+  function hideTip() { tip.style.opacity = 0; }
+  function niceMax(v) {
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    return Math.ceil(v / p * 2) / 2 * p;
+  }
+  function legend(container, items) {
+    const d = document.createElement("div");
+    d.className = "legend";
+    d.innerHTML = items.map(i =>
+      `<span><i class="${i.square ? "sq" : ""}" style="background:${i.color}"></i>${i.name}</span>`).join("");
+    container.appendChild(d);
+  }
+
+  // ---------- Gráfica de líneas (eje Y único, empieza en 0) ----------
+  function lineChart(container, labels, series, fmt) {
+    const W = 560, H = 260, m = { t: 12, r: 16, b: 28, l: 52 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    if (series.length > 1) legend(container, series.map(s => ({ name: s.name, color: css(s.color) })));
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, container);
+    const max = niceMax(Math.max(...series.flatMap(s => s.values)));
+    const x = i => m.l + (iw / (labels.length - 1)) * i;
+    const y = v => m.t + ih - (v / max) * ih;
+    for (let k = 0; k <= 4; k++) {
+      const v = max / 4 * k;
+      el("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: "gridline" }, svg);
+      el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+    }
+    labels.forEach((l, i) => el("text", { x: x(i), y: H - 8, "text-anchor": "middle" }, svg).textContent = l);
+    series.forEach(s => {
+      const d = s.values.map((v, i) => (i ? "L" : "M") + x(i) + "," + y(v)).join("");
+      el("path", { d, fill: "none", stroke: `var(${s.color})`, "stroke-width": 2,
+        "stroke-dasharray": s.dash ? "6 4" : "none", "stroke-linejoin": "round" }, svg);
+    });
+    const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: css("--text-muted"), "stroke-width": 1, opacity: 0 }, svg);
+    const dots = series.map(s => el("circle", { r: 4, fill: `var(${s.color})`, stroke: css("--surface-1"), "stroke-width": 2, opacity: 0 }, svg));
+    const hit = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent" }, svg);
+    hit.addEventListener("mousemove", evt => {
+      const r = svg.getBoundingClientRect();
+      const px = (evt.clientX - r.left) * (W / r.width);
+      const i = Math.max(0, Math.min(labels.length - 1, Math.round((px - m.l) / (iw / (labels.length - 1)))));
+      cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", .5);
+      dots.forEach((d, j) => { d.setAttribute("cx", x(i)); d.setAttribute("cy", y(series[j].values[i])); d.setAttribute("opacity", 1); });
+      const rows = series.map(s => [s.name, fmt(s.values[i])]);
+      if (series.length === 2) {
+        const diff = series[0].values[i] - series[1].values[i];
+        const pct = (diff / series[1].values[i] * 100).toFixed(1);
+        rows.push(["Diferencia", (diff >= 0 ? "+" : "") + pct + "%"]);
+      }
+      showTip(evt, labels[i], rows);
+    });
+    hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); });
+  }
+
+  // ---------- Gráfica de barras verticales ----------
+  function barChart(container, labels, values, color, fmt, tipName) {
+    const W = 560, H = 260, m = { t: 12, r: 16, b: 28, l: 52 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, container);
+    const max = niceMax(Math.max(...values));
+    const y = v => m.t + ih - (v / max) * ih;
+    const band = iw / labels.length, bw = Math.min(band - 2, band * 0.7);
+    for (let k = 0; k <= 4; k++) {
+      const v = max / 4 * k;
+      el("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: "gridline" }, svg);
+      el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+    }
+    values.forEach((v, i) => {
+      const cx = m.l + band * i + band / 2;
+      const h = ih - (y(v) - m.t), top = y(v), r = Math.min(4, h);
+      const d = `M${cx - bw / 2},${m.t + ih} V${top + r} Q${cx - bw / 2},${top} ${cx - bw / 2 + r},${top} H${cx + bw / 2 - r} Q${cx + bw / 2},${top} ${cx + bw / 2},${top + r} V${m.t + ih} Z`;
+      const bar = el("path", { d, fill: `var(${color})` }, svg);
+      el("text", { x: cx, y: H - 8, "text-anchor": "middle" }, svg).textContent = labels[i];
+      const hit = el("rect", { x: m.l + band * i, y: m.t, width: band, height: ih, fill: "transparent" }, svg);
+      hit.addEventListener("mousemove", evt => { bar.setAttribute("opacity", .8); showTip(evt, labels[i], [[tipName, fmt(v)]]); });
+      hit.addEventListener("mouseleave", () => { bar.setAttribute("opacity", 1); hideTip(); });
+    });
+  }
+
+  // ---------- Gráfica de barras horizontales (ranking) ----------
+  function hBarChart(container, obj, color, fmt, tipName) {
+    const entries = Object.entries(obj).sort((a, b) => b[1] - a[1]);
+    const W = 560, rowH = 40, m = { t: 8, r: 70, b: 8, l: 90 };
+    const H = m.t + m.b + rowH * entries.length, iw = W - m.l - m.r;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, container);
+    const max = Math.max(...entries.map(e => e[1]));
+    const total = entries.reduce((s, e) => s + e[1], 0);
+    entries.forEach(([k, v], i) => {
+      const yy = m.t + rowH * i + 8, bh = rowH - 16, w = (v / max) * iw, r = Math.min(4, w);
+      el("text", { x: m.l - 10, y: yy + bh / 2 + 4, "text-anchor": "end" }, svg).textContent = k;
+      const d = `M${m.l},${yy} H${m.l + w - r} Q${m.l + w},${yy} ${m.l + w},${yy + r} V${yy + bh - r} Q${m.l + w},${yy + bh} ${m.l + w - r},${yy + bh} H${m.l} Z`;
+      const bar = el("path", { d, fill: `var(${color})` }, svg);
+      el("text", { x: m.l + w + 8, y: yy + bh / 2 + 4 }, svg).textContent = fmt(v);
+      const hit = el("rect", { x: 0, y: m.t + rowH * i, width: W, height: rowH, fill: "transparent" }, svg);
+      hit.addEventListener("mousemove", evt => { bar.setAttribute("opacity", .8); showTip(evt, k, [[tipName, fmt(v)], ["% del total", (v / total * 100).toFixed(1) + "%"]]); });
+      hit.addEventListener("mouseleave", () => { bar.setAttribute("opacity", 1); hideTip(); });
+    });
+  }
+
+  // ---------- Gráfica de pastel ----------
+  function pieChart(container, obj) {
+    const entries = Object.entries(obj);
+    const colors = ["--series-1", "--series-2", "--series-3", "--series-4", "--series-5"];
+    legend(container, entries.map((e, i) => ({ name: e[0], color: css(colors[i]), square: true })));
+    const W = 560, H = 260, cx = W / 2, cy = H / 2, R = 115;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, container);
+    const total = entries.reduce((s, e) => s + e[1], 0);
+    let a0 = -Math.PI / 2;
+    entries.forEach(([k, v], i) => {
+      const a1 = a0 + (v / total) * Math.PI * 2;
+      const large = a1 - a0 > Math.PI ? 1 : 0;
+      const d = `M${cx},${cy} L${cx + R * Math.cos(a0)},${cy + R * Math.sin(a0)} A${R},${R} 0 ${large} 1 ${cx + R * Math.cos(a1)},${cy + R * Math.sin(a1)} Z`;
+      const p = el("path", { d, fill: `var(${colors[i]})`, stroke: css("--surface-1"), "stroke-width": 2 }, svg);
+      p.addEventListener("mousemove", evt => showTip(evt, k, [["Ventas", fmtMiles(v)], ["Participación", (v / total * 100).toFixed(1) + "%"]]));
+      p.addEventListener("mouseleave", hideTip);
+      a0 = a1;
+    });
+  }
+
+  // ---------- KPIs ----------
+  function renderKPIs() {
+    const total = DATOS.ventas.reduce((a, b) => a + b, 0);
+    const unidades = DATOS.unidades.reduce((a, b) => a + b, 0);
+    const iMax = DATOS.ventas.indexOf(Math.max(...DATOS.ventas));
+    const kpis = [
+      ["Ventas totales", fmtMiles(total), "Acumulado enero–diciembre"],
+      ["Unidades vendidas", fmtNum(unidades), "Total del año"],
+      ["Ticket promedio", "$" + (total * 1000 / unidades).toFixed(0), "MXN por unidad"],
+      ["Mejor mes", DATOS.meses[iMax], fmtMiles(DATOS.ventas[iMax]) + " en ventas"]
+    ];
+    document.getElementById("kpis").innerHTML = kpis.map(k =>
+      `<div class="kpi"><div class="label">${k[0]}</div><div class="value">${k[1]}</div><div class="sub">${k[2]}</div></div>`).join("");
+  }
+
+  renderKPIs();
+  lineChart(document.getElementById("chart-ventas"), DATOS.meses,
+    [{ name: "Ventas", values: DATOS.ventas, color: "--series-1" }], fmtMiles);
+  hBarChart(document.getElementById("chart-regiones"), DATOS.regiones, "--series-1", fmtMiles, "Ventas");
+  pieChart(document.getElementById("chart-categorias"), DATOS.categorias);
+  barChart(document.getElementById("chart-unidades"), DATOS.meses, DATOS.unidades, "--series-1", fmtNum, "Unidades");
+</script>
+</body>
+</html>
